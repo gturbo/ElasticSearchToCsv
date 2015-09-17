@@ -27,9 +27,24 @@ public class TestScroll {
                "id devise codeLibelle dateOperation referenceOperation entiteGestion compte poste sousPoste categorie sousCategorie montant libelle details pointage.id dateValeur",
                queryDocuments,
                "E:/tmp/testScrollEsToCsv.csv",
-               "10000",
+               "3",
                "20"
                ));
         e.extract();
     }
+
+    @Test
+    public void testPerf() throws Exception {
+        ElasticSearchToCsv e = new ElasticSearchToCsv(new Parameters(host,
+                port,
+                indexName,
+                "id devise codeLibelle dateOperation referenceOperation entiteGestion compte poste sousPoste categorie sousCategorie montant libelle details pointage.id dateValeur",
+                queryDocuments,
+                "E:/tmp/testScrollEsToCsv.csv",
+                "5000",
+                "20000"
+        ));
+        e.extract();
+    }
+
 }
