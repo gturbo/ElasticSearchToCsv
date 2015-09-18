@@ -24,7 +24,8 @@ public class ElasticSearchToCsv {
     private Parameters params;
     private long generationTime;
     private long generationNumber;
-    volatile boolean  extractionDone = false;
+    volatile boolean extractionDone = false;
+    volatile boolean interrupting = false;
 
     public ElasticSearchToCsv(Parameters params) {
         this.params = params;
@@ -77,53 +78,62 @@ public class ElasticSearchToCsv {
                     while (!(extractionDone && tasks.isEmpty())) {
                         long start = System.currentTimeMillis();
                         toCsv(tasks.take());
-                        generationTime+=System.currentTimeMillis()-start;
+                        generationTime += System.currentTimeMillis() - start;
                         generationNumber++;
                     }
                 } catch (InterruptedException e) {
-                    throw new RuntimeException("worker interrupted", e);
-                } catch (IOException ioe) {
-                    throw new RuntimeException("worker IOException", ioe);
+                    if (!interrupting)
+                        throw new RuntimeException("worker interrupted", e);
+                } catch (Throwable any) {
+                    throw new RuntimeException("worker IOException", any);
                 }
             }
         };
 
         Thread worker = new Thread(workerCode);
-        worker.start();
+        boolean workerRunning=true;
+        try {
+            worker.start();
+            while (result.isSucceeded() && found < limit && hits.size() > 0) {
+                try {
+                    tasks.put(hits);
+                } catch (InterruptedException e) {
+                    out.close();
+                    throw new RuntimeException("interrupted while waiting putting hittings in the queue", e);
+                }
+                found += hits.size();
+                if (found < limit)
+                    System.out.println(found * 100l / limit + "%");
+                else
+                    System.out.println("\nlast record fetched extracted " + found + " records");
+                final String scrollId = result.getJsonObject().getAsJsonPrimitive("_scroll_id").getAsString();
+                SearchScroll scroll = new SearchScroll.Builder(scrollId, params.timeout).build();
+                result = client.execute(scroll);
+                allHits = result.getJsonObject().getAsJsonObject("hits");
+                hits = allHits.getAsJsonArray("hits");
+            }
 
-
-        while (result.isSucceeded() && found < limit && hits.size() > 0)
-        {
+            extractionDone = true;
+            long waitTime = (generationNumber > 0) ? (tasks.size() + 1) * generationTime / generationNumber * 12 / 10
+                    : 100l * new Long(params.scrollSize);
             try {
-                tasks.put(hits);
+                worker.join(waitTime);
+                workerRunning = false;
             } catch (InterruptedException e) {
                 out.close();
-                throw new RuntimeException("interrupted while waiting putting hittings in the queue", e);
+                throw new RuntimeException("interrupted while waiting for worker thread", e);
             }
-            found += hits.size();
-            if (found < limit)
-                System.out.print(" " + found * 100l / limit + "%");
-            else
-                System.out.println("\nlast record fetched extracted " + found + " records");
-            ;
-            final String scrollId = result.getJsonObject().getAsJsonPrimitive("_scroll_id").getAsString();
-            SearchScroll scroll = new SearchScroll.Builder(scrollId, params.timeout).build();
-            result = client.execute(scroll);
-            allHits = result.getJsonObject().getAsJsonObject("hits");
-            hits = allHits.getAsJsonArray("hits");
-            System.out.flush();
-        }
 
-        extractionDone = true;
-        long waitTime =  (generationNumber > 0) ? (tasks.size()+1)*generationTime/generationNumber*12/10
-                : 100l * new Long(params.scrollSize);
-        try {
-            worker.join(waitTime);
-        } catch (InterruptedException e) {
+        } catch (Exception e) {
+            throw new RuntimeException("interrupted while worker thread running", e);
+
+        } finally {
             out.close();
-            throw new RuntimeException("interrupted while waiting for worker thread", e);
-         }
-        out.close();
+            if (worker != null && worker.isAlive() && workerRunning) {
+                interrupting = true;
+                worker.interrupt();
+            }
+        }
     }
 
     private Field[] getFields() {
