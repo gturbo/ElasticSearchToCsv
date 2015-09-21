@@ -80,6 +80,12 @@ public class Field {
         }
     }
 
+    private String cleanString(final String src) {
+        return (src.length() >1 && src.charAt(0) == '"') ?
+                src.substring(1, src.length() - 2)
+                : src;
+    }
+
     void writeValue(JsonObject doc, Writer out) throws IOException {
         JsonElement o = doc.get(name);
         if (o == null || o.isJsonNull()) {
@@ -102,10 +108,10 @@ public class Field {
             int i = 0;
             for (; i < a.size() - 1; i++) {
                 final String s1 = a.get(i).toString();
-                s += s1.substring(1, s1.length() - 2) + params.multiSeparator;
+                s += cleanString(s1) + params.multiSeparator;
             }
             final String s1 = a.get(i).toString();
-            s += s1.substring(1, s1.length() - 2);
+            s += cleanString(s1);
             writeString(s, out);
         } else if (o.isJsonObject()) {
             writeString(o.toString(), out);
