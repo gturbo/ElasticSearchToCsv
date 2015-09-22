@@ -80,10 +80,15 @@ public class Field {
         }
     }
 
-    private String cleanString(final String src) {
-        return (src.length() >1 && src.charAt(0) == '"') ?
-                src.substring(1, src.length() - 2)
-                : src;
+    public String cleanString(final String src) {
+        try {
+            if (src==null) return "";
+            return (src.length()>1 && src.charAt(0) == '"') ?
+                    src.substring(1, src.length() - 1)
+                    : src;
+        }   catch (Exception e) {
+            throw new RuntimeException("error parsing string: '" + src + "'", e);
+        }
     }
 
     void writeValue(JsonObject doc, Writer out) throws IOException {

@@ -77,21 +77,29 @@ public class ElasticSearchToCsv {
                 try {
                     while (!(extractionDone && tasks.isEmpty())) {
                         long start = System.currentTimeMillis();
-                        toCsv(tasks.take());
+                        JsonArray hits=null;
+                        try {
+                            hits = tasks.take();
+                        } catch (InterruptedException e) {
+                            // interrupted while waiting not an error
+                            if (!interrupting)
+                                throw new RuntimeException("worker interrupted", e);
+                        }
+                        final JsonArray fhits = hits;
+                        toCsv(fhits);
                         generationTime += System.currentTimeMillis() - start;
                         generationNumber++;
                     }
-                } catch (InterruptedException e) {
-                    if (!interrupting)
-                        throw new RuntimeException("worker interrupted", e);
+
                 } catch (Throwable any) {
-                    throw new RuntimeException("worker IOException", any);
+                    throw new RuntimeException("worker unexpected exception", any);
                 }
+
             }
         };
 
         Thread worker = new Thread(workerCode);
-        boolean workerRunning=true;
+        boolean workerRunning = true;
         try {
             worker.start();
             while (result.isSucceeded() && found < limit && hits.size() > 0) {
@@ -99,7 +107,7 @@ public class ElasticSearchToCsv {
                     tasks.put(hits);
                 } catch (InterruptedException e) {
                     out.close();
-                    throw new RuntimeException("interrupted while waiting putting hittings in the queue", e);
+                    throw new RuntimeException("interrupted while waiting to put results in queue", e);
                 }
                 found += hits.size();
                 if (found < limit)
@@ -115,7 +123,7 @@ public class ElasticSearchToCsv {
 
             extractionDone = true;
             long waitTime = (generationNumber > 0) ? (tasks.size() + 1) * generationTime / generationNumber * 12 / 10
-                    : 100l * new Long(params.scrollSize);
+                    : Math.min(new Long(params.scrollSize), found);
             try {
                 worker.join(waitTime);
                 workerRunning = false;
