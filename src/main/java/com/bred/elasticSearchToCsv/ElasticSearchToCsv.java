@@ -22,8 +22,8 @@ import java.util.concurrent.SynchronousQueue;
 public class ElasticSearchToCsv {
 
     private Parameters params;
-    private long generationTime;
-    private long generationNumber;
+    private volatile long generationTime;
+    private volatile long generationNumber;
     volatile boolean extractionDone = false;
     volatile boolean interrupting = false;
 
@@ -43,10 +43,11 @@ public class ElasticSearchToCsv {
                 .addIndex(params.indices)
                 .setParameter(io.searchbox.params.Parameters.SIZE, params.scrollSize)
                 .setParameter(io.searchbox.params.Parameters.SCROLL, params.timeout)
+               // commented out as empty results are returned with this parameter perhaps ES version problem
+              //  .setParameter(io.searchbox.params.Parameters.SEARCH_TYPE, "scan")
                 .build();
 
         JestResult result = client.execute(search);
-        boolean doContinue = true;
         JsonObject allHits = result.getJsonObject().getAsJsonObject("hits");
         final long allCount = allHits.getAsJsonPrimitive("total").getAsLong();
         final long limit = params.limit >= 0 ? Math.min(allCount, params.limit) : allCount;
@@ -120,12 +121,15 @@ public class ElasticSearchToCsv {
                 allHits = result.getJsonObject().getAsJsonObject("hits");
                 hits = allHits.getAsJsonArray("hits");
             }
-
+            final String scrollId = result.getJsonObject().getAsJsonPrimitive("_scroll_id").getAsString();
+            DeleteSearchScroll delete = new DeleteSearchScroll.Builder(scrollId).build();
+            result = client.execute(delete);
             extractionDone = true;
-            long waitTime = (generationNumber > 0) ? (tasks.size() + 1) * generationTime / generationNumber * 12 / 10
+
+            long waitTime = (generationNumber > 0) ? generationTime / generationNumber * 12l / 10l
                     : Math.min(new Long(params.scrollSize), found);
             try {
-                worker.join(waitTime);
+                worker.join(Math.max(waitTime, 1l));
                 workerRunning = false;
             } catch (InterruptedException e) {
                 out.close();

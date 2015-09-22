@@ -3,6 +3,8 @@ package com.bred.elasticSearchToCsv;
 import org.junit.Ignore;
 import org.junit.Test;
 
+import java.io.IOException;
+
 /**
  * Created with IntelliJ IDEA.
  * User: ET80860
@@ -36,7 +38,12 @@ public class TestScroll {
 
     @Test
     public void testSmallResult() throws Exception {
-        String  query = "{\"query\":{\"filtered\":{\"filter\":{\"bool\":{\"must\":[{\"range\":{\"dateOperation\":{\"gte\":\"2015-09-08\",\"lt\":\"2015-09-09\"}}},{\"range\":{\"compte\":{\"gte\":\"001111\",\"lt\":\"001112\"}}}]}}}}}";
+        smallResult("111");
+    }
+
+    private void smallResult(String part) throws IOException {
+        String  query = "{\"query\":{\"filtered\":{\"filter\":{\"bool\":{\"must\":[{\"range\":{\"dateOperation\":{\"gte\":\"2015-09-08\",\"lt\":\"2015-09-09\"}}}," +
+                "{\"range\":{\"compte\":{\"gte\":\"00" + part + "1\",\"lt\":\"00" + part + "2\"}}}]}}}}}";
         ElasticSearchToCsv e = new ElasticSearchToCsv(new Parameters(host,
                 port,
                 indexName,
@@ -47,6 +54,12 @@ public class TestScroll {
                 "-1"
         ));
         e.extract();
+    }
+
+    @Test
+    public void testMultipleSmallResult() throws Exception {
+        for (int i = 0; i<100;i++)
+            smallResult("1"+i);
     }
 
 
